@@ -24,7 +24,7 @@ from pretix.base.models.items import (
     ItemVariation, Quota, SubEventItem, SubEventItemVariation,
 )
 from pretix.base.reldate import RelativeDate, RelativeDateWrapper
-from pretix.control.forms.checkin import CheckinListForm
+from pretix.control.forms.checkin import SimpleCheckinListForm
 from pretix.control.forms.filter import SubEventFilterForm
 from pretix.control.forms.item import QuotaForm
 from pretix.control.forms.subevents import (
@@ -186,7 +186,7 @@ class SubEventEditorMixin(MetaDataEditorMixin):
 
         formsetclass = inlineformset_factory(
             SubEvent, CheckinList,
-            form=CheckinListForm, formset=CheckinListFormSet,
+            form=SimpleCheckinListForm, formset=CheckinListFormSet,
             can_order=False, can_delete=True, extra=extra,
         )
         if self.object:
