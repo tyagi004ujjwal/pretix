@@ -1411,8 +1411,8 @@ class Quota(LoggedModel):
             self.cached_availability_state = res[0]
             self.cached_availability_number = res[1]
             self.cached_availability_time = now_dt
-            if self.size is None:
-                self.cached_availability_paid_orders = self.count_paid_orders()
+            # if self.size is None:
+            #    self.cached_availability_paid_orders = self.count_paid_orders()
             self.save(
                 update_fields=[
                     'cached_availability_state', 'cached_availability_number', 'cached_availability_time',
@@ -1428,104 +1428,10 @@ class Quota(LoggedModel):
         return res
 
     def _availability(self, now_dt: datetime=None, count_waitinglist=True, ignore_closed=False):
-        now_dt = now_dt or now()
-        if self.closed and not ignore_closed:
-            return Quota.AVAILABILITY_ORDERED, 0
+        from ..services.quotas import calculate_availabilities
 
-        size_left = self.size
-        if size_left is None:
-            return Quota.AVAILABILITY_OK, None
-
-        paid_orders = self.count_paid_orders()
-        self.cached_availability_paid_orders = paid_orders
-        size_left -= paid_orders
-        if size_left <= 0:
-            return Quota.AVAILABILITY_GONE, 0
-
-        size_left -= self.count_pending_orders()
-        if size_left <= 0:
-            return Quota.AVAILABILITY_ORDERED, 0
-
-        size_left -= self.count_blocking_vouchers(now_dt)
-        if size_left <= 0:
-            return Quota.AVAILABILITY_ORDERED, 0
-
-        if count_waitinglist:
-            size_left -= self.count_waiting_list_pending()
-            if size_left <= 0:
-                return Quota.AVAILABILITY_ORDERED, 0
-
-        size_left -= self.count_in_cart(now_dt)
-        if size_left <= 0:
-            return Quota.AVAILABILITY_RESERVED, 0
-
-        return Quota.AVAILABILITY_OK, size_left
-
-    def count_blocking_vouchers(self, now_dt: datetime=None) -> int:
-        from pretix.base.models import Voucher
-
-        now_dt = now_dt or now()
-        if 'sqlite3' in settings.DATABASES['default']['ENGINE']:
-            func = 'MAX'
-        else:  # NOQA
-            func = 'GREATEST'
-
-        return Voucher.objects.filter(
-            Q(event=self.event) & Q(subevent=self.subevent) &
-            Q(block_quota=True) &
-            Q(Q(valid_until__isnull=True) | Q(valid_until__gte=now_dt)) &
-            Q(Q(self._position_lookup) | Q(quota=self))
-        ).values('id').aggregate(
-            free=Sum(Func(F('max_usages') - F('redeemed'), 0, function=func))
-        )['free'] or 0
-
-    def count_waiting_list_pending(self) -> int:
-        from pretix.base.models import WaitingListEntry
-        return WaitingListEntry.objects.filter(
-            Q(voucher__isnull=True) & Q(subevent=self.subevent) &
-            self._position_lookup
-        ).distinct().count()
-
-    def count_in_cart(self, now_dt: datetime=None) -> int:
-        from pretix.base.models import CartPosition
-
-        now_dt = now_dt or now()
-        return CartPosition.objects.filter(
-            Q(event=self.event) & Q(subevent=self.subevent) &
-            Q(expires__gte=now_dt) &
-            Q(
-                Q(voucher__isnull=True)
-                | Q(voucher__block_quota=False)
-                | Q(voucher__valid_until__lt=now_dt)
-            ) &
-            self._position_lookup
-        ).count()
-
-    def count_pending_orders(self) -> dict:
-        from pretix.base.models import Order, OrderPosition
-
-        # This query has beeen benchmarked against a Count('id', distinct=True) aggregate and won by a small margin.
-        return OrderPosition.objects.filter(
-            self._position_lookup, order__status=Order.STATUS_PENDING, order__event=self.event, subevent=self.subevent
-        ).count()
-
-    def count_paid_orders(self):
-        from pretix.base.models import Order, OrderPosition
-
-        return OrderPosition.objects.filter(
-            self._position_lookup, order__status=Order.STATUS_PAID, order__event=self.event, subevent=self.subevent
-        ).count()
-
-    @cached_property
-    def _position_lookup(self) -> Q:
-        return (
-            (  # Orders for items which do not have any variations
-               Q(variation__isnull=True) &
-               Q(item_id__in=Quota.items.through.objects.filter(quota_id=self.pk).values_list('item_id', flat=True))
-            ) | (  # Orders for items which do have any variations
-                   Q(variation__in=Quota.variations.through.objects.filter(quota_id=self.pk).values_list('itemvariation_id', flat=True))
-            )
-        )
+        r = calculate_availabilities([self], now_dt, count_waitinglist, ignore_closed, analyze=False)
+        return r[self]
 
     class QuotaExceededException(Exception):
         pass

@@ -18,6 +18,7 @@ from pretix.base.i18n import language
 from pretix.base.models import (
     Event, EventMetaValue, SubEvent, SubEventMetaValue,
 )
+from pretix.base.services.quotas import calculate_availabilities
 from pretix.helpers.daterange import daterange
 from pretix.multidomain.urlreverse import eventreverse
 from pretix.presale.ical import get_ical
@@ -272,7 +273,12 @@ def add_subevents_for_days(qs, before, after, ebd, timezones, event=None, cart_n
     ).order_by(
         'date_from'
     )
+    quotas = []
     for se in qs:
+        quotas += se.active_quotas
+    quotas_cache = calculate_availabilities(quotas)
+    for se in qs:
+        se._quota_cache = quotas_cache
         kwargs = {'subevent': se.pk}
         if cart_namespace:
             kwargs['cart_namespace'] = cart_namespace

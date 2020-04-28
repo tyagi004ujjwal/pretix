@@ -205,6 +205,7 @@ class EventMixin:
     @cached_property
     def best_availability_state(self):
         from .items import Quota
+        from ..services.quotas import calculate_availabilities
 
         if not hasattr(self, 'active_quotas'):
             raise TypeError("Call this only if you fetched the subevents via Event/SubEvent.annotated()")
@@ -214,8 +215,11 @@ class EventMixin:
         vars_reserved = set()
         items_gone = set()
         vars_gone = set()
+
+        # todo: allow for cache
+        r = self._quota_cache
         for q in self.active_quotas:
-            res = q.availability(allow_cache=True)
+            res = r[q]
 
             if res[0] == Quota.AVAILABILITY_OK:
                 if q.active_items:

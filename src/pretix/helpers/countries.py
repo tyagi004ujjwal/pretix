@@ -23,7 +23,22 @@ class CachedCountries(Countries):
             yield from val
             return
 
-        val = list(super().__iter__())
+        if get_language() == "en":
+            countries = self.countries
+            countries_first = (self.translate_pair(code) for code in self.countries_first)
+            for item in countries_first:
+                yield item
+            if self.countries_first:
+                first_break = self.get_option("first_break")
+                if first_break:
+                    yield ("", str(first_break))
+
+            # Return sorted country list.
+            val = sorted(countries, key=lambda c: c[1])
+        else:
+            raise ValueError()
+            val = list(super().__iter__())
+
         self._cached_lists[cache_key] = val
         cache.set(cache_key, val, 3600 * 24 * 30)
         yield from val
